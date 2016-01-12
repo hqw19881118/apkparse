@@ -1,30 +1,24 @@
-package com.baidu;
+package com.baidu.sjws;
 
 import com.baidu.rc.ApkFile;
 import com.baidu.rc.PackageInfo;
-import com.baidu.utils.ZipUtils;
+import com.baidu.sjws.utils.ApkUtils;
 import org.apache.commons.io.IOUtils;
-import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.annotate.JsonSerialize;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.security.cert.CertificateEncodingException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
 public class Main {
-    public static final ObjectMapper mapper;
-    static{
-        mapper = new ObjectMapper();
-        mapper.setSerializationInclusion(JsonSerialize.Inclusion.NON_NULL);
-        mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES,false);
-    }
+    public static final ObjectMapper mapper = new ObjectMapper();
 
-    private static void saveApkInfo(String srcApk, String apkInfoFileName) throws IOException {
+    private static void saveApkInfo(String srcApk, String APKInfoDir, String apkInfoFile) throws IOException, CertificateEncodingException {
         File file = new File(srcApk);
         ApkFile apkFile = new ApkFile(file);
         PackageInfo packageInfo = apkFile.parsePackage();
@@ -34,11 +28,20 @@ public class Main {
         pkgInfoMap.put("vc", packageInfo.versionCode);
         pkgInfoMap.put("pkg", packageInfo.name);
         pkgInfoMap.put("label", packageInfo.label);
+
+        //get md5 from rsa file
+        String rsaFileName = ApkUtils.extractFileFromZip(srcApk, ".RSA", APKInfoDir);
+        if (null == rsaFileName) {
+            rsaFileName = ApkUtils.extractFileFromZip(srcApk, ".DSA", APKInfoDir);
+        }
+        Map<String, String> md5Map = ApkUtils.getMd5FromRSAFile(rsaFileName);
+        pkgInfoMap.putAll(md5Map);
+
         String jsonData = mapper.writeValueAsString(pkgInfoMap);
-//        System.out.println(jsonData);
+        System.out.println(jsonData);
 
         // store apk info into file
-        File outFile = new File(apkInfoFileName);
+        File outFile = new File(APKInfoDir + apkInfoFile);
         OutputStream outputStream = new FileOutputStream(outFile);
         try {
             outputStream.write(jsonData.getBytes());
@@ -48,7 +51,7 @@ public class Main {
         }
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, CertificateEncodingException {
         if(args.length < 3) {
             showUsage();
             return;
@@ -56,16 +59,19 @@ public class Main {
         String srcApk = args[0];
         String apkInfoFile = args[1];
         String apkInfoDir = args[2];
+//        String srcApk = "D:\\downloads\\ruanjianxiazai_1.apk";
+//        String apkInfoFile = "apk_info.txt";
+//        String apkInfoDir = "D:\\downloads\\";
 
         // parse apk and get basic info
         if (!apkInfoDir.endsWith(File.separator)) {
             apkInfoDir += File.separator;
         }
-        saveApkInfo(srcApk, apkInfoDir + apkInfoFile);
+        saveApkInfo(srcApk, apkInfoDir, apkInfoFile);
         // extract icon from apk if needed.
         if (args.length > 3) {
             String iconName = args[3];
-            ZipUtils.extractFileFromZip(srcApk, iconName, apkInfoDir);
+            ApkUtils.extractFileFromZip(srcApk, iconName, apkInfoDir);
         }
     }
 
